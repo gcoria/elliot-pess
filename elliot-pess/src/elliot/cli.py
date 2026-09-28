@@ -1,10 +1,11 @@
-"""Command line: JSON counts, or a local chart of the projections."""
+"""Command line: download prices, JSON counts, or a local chart of the projections."""
 
 from __future__ import annotations
 
 import argparse
 import json
 import sys
+from datetime import date
 
 from elliot.engine import analyze
 from elliot.io.csv_loader import load_ohlc
@@ -14,6 +15,12 @@ from elliot.serialize import analysis_to_dict, chart_payload
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="elliot")
     sub = parser.add_subparsers(dest="command", required=True)
+
+    fetch = sub.add_parser("fetch", help="Baja velas diarias de Yahoo Finance a un CSV")
+    fetch.add_argument("ticker")
+    fetch.add_argument("--from", dest="start", type=_iso_date, required=True, help="YYYY-MM-DD")
+    fetch.add_argument("--to", dest="end", type=_iso_date, default=None, help="YYYY-MM-DD, default hoy")
+    fetch.add_argument("--out", default=None, help="Ruta del CSV. Default data/<TICKER>_<from>_<to>.csv")
 
     counts = sub.add_parser("counts", help="Cuenta ondas y escribe JSON")
     _add_series_args(counts)
@@ -29,18 +36,34 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
     try:
-        bars = load_ohlc(args.csv)
-        analysis = analyze(
-            bars,
-            deviation=args.deviation,
-            mode=args.mode,
-            atr_period=args.atr_period,
-            atr_mult=args.atr_mult,
-            top=args.top,
-        )
+        if args.command == "fetch":
+            return _run_fetch(args)
+        return _run_analysis(args)
     except (OSError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
+
+
+def _run_fetch(args: argparse.Namespace) -> int:
+    from elliot.io.fetch import default_output, fetch_daily, write_ohlc_csv
+
+    end = args.end or date.today()
+    bars = fetch_daily(args.ticker, args.start, end)
+    target = write_ohlc_csv(args.out or default_output(args.ticker, args.start, end), bars)
+    print(f"{target} ({len(bars)} velas, {bars[0].timestamp} a {bars[-1].timestamp})")
+    return 0
+
+
+def _run_analysis(args: argparse.Namespace) -> int:
+    bars = load_ohlc(args.csv)
+    analysis = analyze(
+        bars,
+        deviation=args.deviation,
+        mode=args.mode,
+        atr_period=args.atr_period,
+        atr_mult=args.atr_mult,
+        top=args.top,
+    )
 
     if args.command == "counts":
         print(json.dumps(analysis_to_dict(analysis), ensure_ascii=False, indent=2))
@@ -59,3 +82,10 @@ def _add_series_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--mode", choices=("percent", "atr"), default="percent")
     parser.add_argument("--atr-mult", type=float, default=2.0, dest="atr_mult")
     parser.add_argument("--atr-period", type=int, default=14, dest="atr_period")
+
+
+def _iso_date(value: str) -> date:
+    try:
+        return date.fromisoformat(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"fecha inválida: {value}. Usá YYYY-MM-DD") from exc
