@@ -192,18 +192,20 @@
         lineWidth: 2,
         lineStyle: LightweightCharts.LineStyle.Dashed,
         axisLabelVisible: true,
-        title: "invalidación",
+        title: count.invalidated ? "invalidado" : "invalidación",
       }));
-      for (const level of count.projections) {
-        if (!level.preferred) continue;
-        priceLines.push(candles.createPriceLine({
-          price: level.price,
-          color: fibColor(level.ratio),
-          lineWidth: 2,
-          lineStyle: LightweightCharts.LineStyle.Solid,
-          axisLabelVisible: true,
-          title: level.label,
-        }));
+      if (!count.invalidated) {
+        for (const level of count.projections) {
+          if (!level.preferred) continue;
+          priceLines.push(candles.createPriceLine({
+            price: level.price,
+            color: fibColor(level.ratio),
+            lineWidth: 2,
+            lineStyle: LightweightCharts.LineStyle.Solid,
+            axisLabelVisible: true,
+            title: level.label,
+          }));
+        }
       }
       renderSide(count);
     }
@@ -221,7 +223,8 @@
       title.textContent = count.pattern_label;
       const meta = document.createElement("p");
       meta.className = "meta";
-      meta.textContent = `${count.title} · ${count.direction_label} · ${count.status_label} · ${count.weight}% · `;
+      const share = count.invalidated ? "invalidado" : `${count.weight}%`;
+      meta.textContent = `${count.title} · ${count.direction_label} · ${count.status_label} · ${share} · `;
       const score = document.createElement("span");
       score.className = "score";
       score.textContent = String(count.score);
@@ -238,19 +241,26 @@
       const projTitle = document.createElement("h3");
       projTitle.textContent = "Proyecciones";
       const proj = document.createElement("ul");
-      if (!count.projections.length) {
+      if (count.invalidated) {
+        const item = document.createElement("li");
+        item.className = "empty";
+        item.textContent = "El precio ya cruzó la invalidación.";
+        proj.appendChild(item);
+      } else if (!count.projections.length) {
         const item = document.createElement("li");
         item.className = "empty";
         item.textContent = "Sin objetivos con las ondas confirmadas.";
         proj.appendChild(item);
       }
-      for (const level of count.projections) {
-        const item = document.createElement("li");
-        item.className = level.preferred ? "projection" : "projection secondary";
-        item.dataset.preferred = level.preferred ? "1" : "0";
-        item.style.color = fibColor(level.ratio);
-        item.textContent = level.label;
-        proj.appendChild(item);
+      if (!count.invalidated) {
+        for (const level of count.projections) {
+          const item = document.createElement("li");
+          item.className = level.preferred ? "projection" : "projection secondary";
+          item.dataset.preferred = level.preferred ? "1" : "0";
+          item.style.color = fibColor(level.ratio);
+          item.textContent = level.label;
+          proj.appendChild(item);
+        }
       }
 
       const notesTitle = document.createElement("h3");
@@ -290,7 +300,9 @@
         body.counts.forEach((count, index) => {
           const option = document.createElement("option");
           option.value = String(index);
-          option.textContent = `${count.title} · ${count.pattern_label} · ${count.weight}%`;
+          option.textContent = count.invalidated
+            ? `${count.title} · ${count.pattern_label} · invalidado`
+            : `${count.title} · ${count.pattern_label} · ${count.weight}%`;
           countSelect.appendChild(option);
         });
         if (!body.counts.length) {

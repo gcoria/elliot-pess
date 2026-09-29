@@ -31,6 +31,7 @@ def count_to_dict(count: Count) -> dict:
         "direction": count.direction,
         "pattern": count.pattern,
         "status": count.status,
+        "invalidated": count.invalidated,
         "variant": count.variant,
         "waves": [_wave_dict(wave) for wave in count.waves],
         "invalidation": count.invalidation,
@@ -74,6 +75,7 @@ def _chart_count(count: Count, title: str) -> dict:
         "direction_label": _DIRECTION_LABELS.get(count.direction, count.direction),
         "status": count.status,
         "status_label": _STATUS_LABELS.get(count.status, count.status),
+        "invalidated": count.invalidated,
         "variant": count.variant,
         "notes": list(count.guideline_notes),
         "invalidation": count.invalidation,
@@ -84,10 +86,15 @@ def _chart_count(count: Count, title: str) -> dict:
 
 
 def _assign_weights(counts: list[dict]) -> None:
-    """Share of the guideline score among the counts on screen, not a market probability."""
-    total = sum(count["score"] for count in counts)
+    """Share of the guideline score among live counts, not a market probability."""
+    live = [count for count in counts if not count["invalidated"]]
+    pool = live or counts
+    total = sum(count["score"] for count in pool)
     for count in counts:
-        count["weight"] = round(100.0 * count["score"] / total, 1) if total else 0.0
+        if count["invalidated"] and live:
+            count["weight"] = 0.0
+        else:
+            count["weight"] = round(100.0 * count["score"] / total, 1) if total else 0.0
 
 
 def _projection_rows(count: Count) -> list[dict]:

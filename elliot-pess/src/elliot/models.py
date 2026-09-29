@@ -88,6 +88,8 @@ class Count:
     guideline_notes: tuple[str, ...]
     variant: str | None = None
     endpoint_indexes: tuple[int, ...] = field(default_factory=tuple)
+    invalidated: bool = False
+    at_edge: bool = True
 
     @property
     def end_prices(self) -> tuple[float, ...]:
