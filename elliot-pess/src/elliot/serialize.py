@@ -53,6 +53,7 @@ def chart_payload(bars: list[Bar], analysis: Analysis) -> dict:
     titles = ["Primario", "Alternativa 1", "Alternativa 2"]
     for index, count in enumerate(analysis.counts):
         counts.append(_chart_count(count, titles[index] if index < len(titles) else f"Conteo {index + 1}"))
+    _assign_weights(counts)
     return {
         "candles": _candles(bars),
         "counts": counts,
@@ -66,6 +67,7 @@ def _chart_count(count: Count, title: str) -> dict:
         "id": title.lower().replace(" ", "-"),
         "title": title,
         "score": count.score,
+        "weight": 0.0,
         "pattern": count.pattern,
         "pattern_label": pattern,
         "direction": count.direction,
@@ -75,13 +77,68 @@ def _chart_count(count: Count, title: str) -> dict:
         "variant": count.variant,
         "notes": list(count.guideline_notes),
         "invalidation": count.invalidation,
-        "projections": [
-            {"price": item.price, "label": item.label, "target": item.target}
-            for item in count.projections
-        ],
+        "projections": _projection_rows(count),
         "polyline": _polyline(count),
         "subwaves": _subwaves(count),
     }
+
+
+def _assign_weights(counts: list[dict]) -> None:
+    """Share of the guideline score among the counts on screen, not a market probability."""
+    total = sum(count["score"] for count in counts)
+    for count in counts:
+        count["weight"] = round(100.0 * count["score"] / total, 1) if total else 0.0
+
+
+def _projection_rows(count: Count) -> list[dict]:
+    preferred = _preferred_indexes(count.projections)
+    return [
+        {
+            "price": item.price,
+            "label": item.label,
+            "target": item.target,
+            "ratio": item.ratio,
+            "basis": item.basis,
+            "preferred": index in preferred,
+        }
+        for index, item in enumerate(count.projections)
+    ]
+
+
+def _preferred_indexes(projections) -> set[int]:
+    """One conventional level per wave: 1.618, 0.382, and wave-5 equality or 0.618."""
+    groups: dict[str, list[int]] = {}
+    for index, item in enumerate(projections):
+        groups.setdefault(item.target, []).append(index)
+    chosen: set[int] = set()
+    for target, indexes in groups.items():
+        if target == "breakout":
+            chosen.update(indexes)
+            continue
+        chosen.add(_pick_preferred(projections, indexes, target))
+    return chosen
+
+
+def _pick_preferred(projections, indexes: list[int], target: str) -> int:
+    def first(predicate) -> int | None:
+        for index in indexes:
+            if predicate(projections[index]):
+                return index
+        return None
+
+    if target == "wave3":
+        return first(lambda item: abs(item.ratio - 1.618) < 1e-9) or indexes[0]
+    if target == "wave4":
+        return first(lambda item: abs(item.ratio - 0.382) < 1e-9) or indexes[0]
+    if target == "wave5":
+        equality = first(lambda item: item.basis == "wave1" and abs(item.ratio - 1.0) < 1e-9)
+        if equality is not None:
+            return equality
+        net = first(lambda item: item.basis == "net_0_3" and abs(item.ratio - 0.618) < 1e-9)
+        return net if net is not None else indexes[0]
+    if target in {"waveC", "waveY"}:
+        return first(lambda item: abs(item.ratio - 1.0) < 1e-9) or indexes[0]
+    return indexes[0]
 
 
 def _polyline(count: Count) -> list[dict]:

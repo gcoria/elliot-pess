@@ -60,7 +60,7 @@
     ul { list-style: none; padding: 0; margin: 0; }
     li { padding: 6px 0; border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; }
     .invalid { color: var(--invalid); }
-    .projection { color: var(--projection); }
+    .projection.secondary { opacity: 0.4; }
     .empty { color: var(--muted); }
     @media (max-width: 800px) {
       main { flex-direction: column; }
@@ -110,6 +110,25 @@
     const subLines = [];
     let priceLines = [];
     let payload = { candles: [], counts: [] };
+
+    const FIB_COLORS = {
+      0.236: "#7ec8ff",
+      0.382: "#5b8cff",
+      0.5: "#c4b5fd",
+      0.618: "#f5c542",
+      0.786: "#f0a050",
+      1: "#3dd68c",
+      1.236: "#2ec4b6",
+      1.382: "#20c997",
+      1.618: "#ff9f43",
+      2: "#ff7b72",
+      2.618: "#e85d9a",
+    };
+
+    function fibColor(ratio) {
+      const key = Number(Number(ratio).toFixed(3));
+      return FIB_COLORS[key] || "#d1d4dc";
+    }
 
     function clearPriceLines() {
       for (const line of priceLines) candles.removePriceLine(line);
@@ -176,11 +195,12 @@
         title: "invalidación",
       }));
       for (const level of count.projections) {
+        if (!level.preferred) continue;
         priceLines.push(candles.createPriceLine({
           price: level.price,
-          color: "#3dd68c",
-          lineWidth: 1,
-          lineStyle: LightweightCharts.LineStyle.Dotted,
+          color: fibColor(level.ratio),
+          lineWidth: 2,
+          lineStyle: LightweightCharts.LineStyle.Solid,
           axisLabelVisible: true,
           title: level.label,
         }));
@@ -201,7 +221,7 @@
       title.textContent = count.pattern_label;
       const meta = document.createElement("p");
       meta.className = "meta";
-      meta.textContent = `${count.title} · ${count.direction_label} · ${count.status_label} · `;
+      meta.textContent = `${count.title} · ${count.direction_label} · ${count.status_label} · ${count.weight}% · `;
       const score = document.createElement("span");
       score.className = "score";
       score.textContent = String(count.score);
@@ -226,7 +246,9 @@
       }
       for (const level of count.projections) {
         const item = document.createElement("li");
-        item.className = "projection";
+        item.className = level.preferred ? "projection" : "projection secondary";
+        item.dataset.preferred = level.preferred ? "1" : "0";
+        item.style.color = fibColor(level.ratio);
         item.textContent = level.label;
         proj.appendChild(item);
       }
@@ -268,7 +290,7 @@
         body.counts.forEach((count, index) => {
           const option = document.createElement("option");
           option.value = String(index);
-          option.textContent = `${count.title} · ${count.pattern_label} · ${count.score}`;
+          option.textContent = `${count.title} · ${count.pattern_label} · ${count.weight}%`;
           countSelect.appendChild(option);
         });
         if (!body.counts.length) {
