@@ -41,6 +41,9 @@ def test_chart_api_exposes_prices_levels_and_page(tmp_path):
     page = client.get("/")
     assert page.status_code == 200
     assert "Subondas" in page.text
+    assert "Pronóstico" in page.text
+    assert body["forecast"]["counts"][0]["step"] == "retracement"
+    assert body["forecast"]["last_close"] == 125
     assert "lightweight-charts" in page.text
     assert "count.invalidated" in page.text
 

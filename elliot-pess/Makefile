@@ -7,9 +7,10 @@ CSV       ?= data/$(TICKER)_$(FROM)_$(TO).csv
 DEVIATION ?= 0.03
 TOP       ?= 3
 PORT      ?= 8765
+TOLERANCE ?= 0.015
 
 .DEFAULT_GOAL := help
-.PHONY: help install test fetch counts view analyze clean
+.PHONY: help install test fetch counts view analyze forecast forecast-csv clean
 
 help:
 	@echo "make install                         crea .venv e instala el paquete con extras dev y data"
@@ -20,9 +21,12 @@ help:
 	@echo "make view   [CSV=archivo.csv]        abre el grafico con proyecciones"
 	@echo "make analyze TICKER=... FROM=... TO=..."
 	@echo "                                     fetch y despues view en un paso"
+	@echo "make forecast TICKER=... FROM=... TO=..."
+	@echo "                                     fetch y despues objetivo de la onda abierta, zonas y riesgo"
+	@echo "make forecast-csv [CSV=archivo.csv]  lo mismo sobre un CSV que ya existe"
 	@echo "make clean                           borra caches de Python y pytest"
 	@echo ""
-	@echo "Variables: TICKER FROM TO CSV DEVIATION TOP PORT PY"
+	@echo "Variables: TICKER FROM TO CSV DEVIATION TOP PORT TOLERANCE PY"
 
 .venv/bin/python:
 	python3 -m venv .venv
@@ -43,6 +47,11 @@ view:
 	$(PY) -m elliot view $(CSV) --top $(TOP) --deviation $(DEVIATION) --port $(PORT)
 
 analyze: fetch view
+
+forecast: fetch forecast-csv
+
+forecast-csv:
+	$(PY) -m elliot forecast $(CSV) --top $(TOP) --deviation $(DEVIATION) --tolerance $(TOLERANCE)
 
 clean:
 	find src tests -name "__pycache__" -type d -exec rm -rf {} +

@@ -1,4 +1,4 @@
-"""Command line: download prices, JSON counts, or a local chart of the projections."""
+"""Command line: download prices, JSON counts, a local chart, or the forecast of the open wave."""
 
 from __future__ import annotations
 
@@ -34,10 +34,23 @@ def main(argv: list[str] | None = None) -> int:
     view.add_argument("--port", type=int, default=8765)
     view.add_argument("--no-browser", action="store_true")
 
+    forecast = sub.add_parser("forecast", help="Objetivo de la onda abierta, zonas de confluencia y riesgo")
+    _add_series_args(forecast)
+    forecast.add_argument("--top", type=int, default=3)
+    forecast.add_argument(
+        "--tolerance",
+        type=float,
+        default=0.015,
+        help="Ancho de una zona como fracción del último cierre (default 0.015)",
+    )
+    forecast.add_argument("--json", action="store_true", help="Escribe el resultado en JSON")
+
     args = parser.parse_args(argv)
     try:
         if args.command == "fetch":
             return _run_fetch(args)
+        if args.command == "forecast":
+            return _run_forecast(args)
         return _run_analysis(args)
     except (OSError, ValueError) as exc:
         print(str(exc), file=sys.stderr)
@@ -73,6 +86,28 @@ def _run_analysis(args: argparse.Namespace) -> int:
 
     payload = chart_payload(bars, analysis)
     serve(payload, host=args.host, port=args.port, open_browser=not args.no_browser)
+    return 0
+
+
+def _run_forecast(args: argparse.Namespace) -> int:
+    from elliot.forecast import build_forecast, forecast_text, forecast_to_dict
+
+    if args.tolerance <= 0:
+        raise ValueError("--tolerance tiene que ser mayor que 0")
+    bars = load_ohlc(args.csv)
+    analysis = analyze(
+        bars,
+        deviation=args.deviation,
+        mode=args.mode,
+        atr_period=args.atr_period,
+        atr_mult=args.atr_mult,
+        top=args.top,
+    )
+    result = build_forecast(bars, analysis, tolerance=args.tolerance)
+    if args.json:
+        print(json.dumps(forecast_to_dict(result), ensure_ascii=False, indent=2))
+    else:
+        print(forecast_text(result))
     return 0
 
 

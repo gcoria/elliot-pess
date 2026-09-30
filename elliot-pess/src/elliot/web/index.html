@@ -61,6 +61,8 @@
     li { padding: 6px 0; border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; }
     .invalid { color: var(--invalid); }
     .projection.secondary { opacity: 0.4; }
+    .outlook { color: #f5c542; }
+    .zone { color: #c4b5fd; }
     .empty { color: var(--muted); }
     @media (max-width: 800px) {
       main { flex-direction: column; }
@@ -73,6 +75,7 @@
     <h1>Conteo Elliott</h1>
     <label>Conteo <select id="count"></select></label>
     <label><input id="subs" type="checkbox"> Subondas</label>
+    <label><input id="outlook" type="checkbox"> Pronóstico</label>
   </header>
   <main>
     <div id="chart"></div>
@@ -83,6 +86,7 @@
   <script>
     const countSelect = document.querySelector("#count");
     const subsToggle = document.querySelector("#subs");
+    const outlookToggle = document.querySelector("#outlook");
     const side = document.querySelector("#side");
     const container = document.querySelector("#chart");
 
@@ -139,13 +143,23 @@
       while (subLines.length) chart.removeSeries(subLines.pop());
     }
 
-    function draw(count, showSubs) {
+    function outlookFor(count) {
+      const counts = (payload.forecast && payload.forecast.counts) || [];
+      return counts.find((item) => item.title === count.title) || null;
+    }
+
+    function centralTarget(outlook) {
+      if (!outlook) return null;
+      return outlook.targets.find((target) => target.central && !target.reached) || null;
+    }
+
+    function draw(count, showSubs, showOutlook) {
       clearPriceLines();
       clearSubLines();
       if (!count) {
         waveLine.setData([]);
         candles.setMarkers([]);
-        renderSide(null);
+        renderSide(null, false);
         return;
       }
       waveLine.setData(count.polyline.map((point) => ({ time: point.time, value: point.price })));
@@ -207,10 +221,57 @@
           }));
         }
       }
-      renderSide(count);
+      if (showOutlook) drawOutlook(count);
+      renderSide(count, showOutlook);
     }
 
-    function renderSide(count) {
+    function drawOutlook(count) {
+      const outlook = outlookFor(count);
+      if (!outlook) return;
+      if (Math.abs(outlook.invalidation - count.invalidation) > 1e-6) {
+        priceLines.push(candles.createPriceLine({
+          price: outlook.invalidation,
+          color: "#ff5c7a",
+          lineWidth: 1,
+          lineStyle: LightweightCharts.LineStyle.Dashed,
+          axisLabelVisible: true,
+          title: "invalidación del pronóstico",
+        }));
+      }
+      const central = centralTarget(outlook);
+      if (central) {
+        priceLines.push(candles.createPriceLine({
+          price: central.price,
+          color: "#f5c542",
+          lineWidth: 2,
+          lineStyle: LightweightCharts.LineStyle.Solid,
+          axisLabelVisible: true,
+          title: `pronóstico · ${outlook.step_label}`,
+        }));
+      }
+      for (const zone of payload.forecast.zones || []) {
+        priceLines.push(candles.createPriceLine({
+          price: zone.low,
+          color: "#c4b5fd",
+          lineWidth: 1,
+          lineStyle: LightweightCharts.LineStyle.Dashed,
+          axisLabelVisible: true,
+          title: "zona",
+        }));
+        if (Math.abs(zone.high - zone.low) > 1e-6) {
+          priceLines.push(candles.createPriceLine({
+            price: zone.high,
+            color: "#c4b5fd",
+            lineWidth: 1,
+            lineStyle: LightweightCharts.LineStyle.Dashed,
+            axisLabelVisible: true,
+            title: "zona",
+          }));
+        }
+      }
+    }
+
+    function renderSide(count, showOutlook) {
       side.replaceChildren();
       if (!count) {
         const empty = document.createElement("p");
@@ -278,15 +339,83 @@
         notes.appendChild(item);
       }
 
-      side.append(title, meta, invalidTitle, invalid, projTitle, proj, notesTitle, notes);
+      const blocks = [title, meta, invalidTitle, invalid, projTitle, proj];
+      if (showOutlook) blocks.push(...outlookBlocks(count));
+      blocks.push(notesTitle, notes);
+      side.append(...blocks);
+    }
+
+    function outlookBlocks(count) {
+      const heading = document.createElement("h3");
+      heading.textContent = "Pronóstico";
+      const list = document.createElement("ul");
+      const outlook = outlookFor(count);
+      if (!outlook) {
+        const item = document.createElement("li");
+        item.className = "empty";
+        item.textContent = "Este conteo no tiene objetivo por delante.";
+        list.appendChild(item);
+        return [heading, list];
+      }
+      const step = document.createElement("li");
+      step.textContent = `Próximo: ${outlook.step_label}`;
+      list.appendChild(step);
+      const central = centralTarget(outlook);
+      const target = document.createElement("li");
+      target.className = "outlook";
+      if (!central) {
+        target.textContent = outlook.targets.length
+          ? "El objetivo central ya fue alcanzado."
+          : "Sin objetivo con las ondas confirmadas.";
+      } else {
+        const risk = central.reward_risk == null ? "" : ` · recompensa/riesgo ${central.reward_risk}`;
+        target.textContent = `${central.price.toFixed(2)} (${signed(central.distance_pct)}%)${risk}`;
+      }
+      list.appendChild(target);
+      if (outlook.band && outlook.band[0] !== outlook.band[1]) {
+        const band = document.createElement("li");
+        band.className = "outlook";
+        band.textContent = `Franja ${outlook.band[0].toFixed(2)}–${outlook.band[1].toFixed(2)}`;
+        list.appendChild(band);
+      }
+      const stop = document.createElement("li");
+      stop.className = "invalid";
+      stop.textContent = `Invalidación ${outlook.invalidation.toFixed(2)} (${signed(outlook.invalidation_pct)}%)`;
+      list.appendChild(stop);
+      const zones = (payload.forecast && payload.forecast.zones) || [];
+      if (!zones.length) {
+        const item = document.createElement("li");
+        item.className = "empty";
+        item.textContent = "Ningún par de conteos apunta a la misma zona.";
+        list.appendChild(item);
+      }
+      for (const zone of zones) {
+        const item = document.createElement("li");
+        item.className = "zone";
+        const span = zone.low === zone.high
+          ? zone.low.toFixed(2)
+          : `${zone.low.toFixed(2)}–${zone.high.toFixed(2)}`;
+        item.textContent = `Zona ${span} · ${zone.titles.join(", ")} · peso ${zone.weight}%`;
+        list.appendChild(item);
+      }
+      return [heading, list];
+    }
+
+    function signed(value) {
+      return `${value >= 0 ? "+" : ""}${value.toFixed(2)}`;
     }
 
     function selectedCount() {
       return payload.counts[Number(countSelect.value)] || null;
     }
 
-    countSelect.addEventListener("change", () => draw(selectedCount(), subsToggle.checked));
-    subsToggle.addEventListener("change", () => draw(selectedCount(), subsToggle.checked));
+    function redraw() {
+      draw(selectedCount(), subsToggle.checked, outlookToggle.checked);
+    }
+
+    countSelect.addEventListener("change", redraw);
+    subsToggle.addEventListener("change", redraw);
+    outlookToggle.addEventListener("change", redraw);
     new ResizeObserver(() => {
       chart.applyOptions({ width: container.clientWidth, height: container.clientHeight });
     }).observe(container);
@@ -310,7 +439,7 @@
           option.textContent = "Sin conteos";
           countSelect.appendChild(option);
         }
-        draw(selectedCount(), false);
+        draw(selectedCount(), false, false);
         chart.timeScale().fitContent();
         document.body.dataset.ready = "1";
       })

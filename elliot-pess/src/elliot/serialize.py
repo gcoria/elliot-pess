@@ -55,10 +55,13 @@ def chart_payload(bars: list[Bar], analysis: Analysis) -> dict:
     for index, count in enumerate(analysis.counts):
         counts.append(_chart_count(count, titles[index] if index < len(titles) else f"Conteo {index + 1}"))
     _assign_weights(counts)
+    from elliot.forecast import build_forecast, forecast_to_dict
+
     return {
         "candles": _candles(bars),
         "counts": counts,
         "pivots": len(analysis.pivots),
+        "forecast": forecast_to_dict(build_forecast(bars, analysis)),
     }
 
 
