@@ -1,4 +1,4 @@
-from elliot.rules.diagonal import valid_diagonal
+from elliot.rules.diagonal import diagonal_shape, valid_diagonal
 from elliot.rules.impulse import valid_impulse, valid_truncated_impulse
 
 OVERLAP = [100, 120, 110, 130, 115, 135]
@@ -23,6 +23,22 @@ def test_overlap_is_rejected_for_impulse_and_allowed_for_diagonal():
 def test_clean_impulse_passes():
     assert valid_impulse(CLEAN, "bullish")
     assert not valid_diagonal(CLEAN, "bullish")
+
+
+def test_diagonal_wave4_cannot_cross_the_origin_of_wave3():
+    pierced = [100, 120, 110, 130, 105, 125]
+    assert not valid_diagonal(pierced, "bullish")
+    assert valid_diagonal(OVERLAP, "bullish")
+
+
+def test_diagonal_shape_is_contracting_or_expanding():
+    contracting = [100, 130, 118, 136, 128, 138]
+    expanding = [100, 108, 102, 116, 106, 128]
+    assert diagonal_shape(contracting) == "contracting"
+    assert diagonal_shape(expanding) == "expanding"
+    assert diagonal_shape(OVERLAP) is None
+    assert valid_diagonal(contracting, "bullish")
+    assert valid_diagonal(expanding, "bullish")
 
 
 def test_truncation_needs_the_explicit_form():

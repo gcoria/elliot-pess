@@ -44,6 +44,10 @@ def test_chart_api_exposes_prices_levels_and_page(tmp_path):
     assert "Pronóstico" in page.text
     assert body["forecast"]["counts"][0]["step"] == "retracement"
     assert body["forecast"]["last_close"] == 125
+    channel = primary["channel"]
+    assert len(channel) == 2
+    assert all(len(line) == 2 for line in channel)
+    assert channel[0][0]["price"] == 105
     assert "lightweight-charts" in page.text
     assert "count.invalidated" in page.text
 

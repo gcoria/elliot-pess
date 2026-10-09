@@ -8,6 +8,7 @@ from elliot.guidelines.fibonacci import fib_quality
 from elliot.models import Count, Direction, Pivot, Wave
 from elliot.projections import project
 from elliot.rules.common import direction_of_start
+from elliot.rules.diagonal import diagonal_shape
 from elliot.rules.impulse import is_truncated, overlaps_wave1, prefix_impulse_ok
 from elliot.rules.triangle import prefix_triangle_ok
 from elliot.rules.zigzag import prefix_zigzag_ok
@@ -269,8 +270,15 @@ def _to_count(pivots: list[Pivot], partial: Partial, status: str) -> Count:
         for index in range(len(partial.ends))
     )
     prices = _prices(pivots, points)
-    invalidation, projections = project(partial.pattern, partial.direction, prices, partial.variant)
-    score, notes = score_waves(partial.pattern, prices, waves, partial.variant)
+    variant = partial.variant
+    if (
+        variant is None
+        and status == "complete"
+        and partial.pattern in {"leading_diagonal", "ending_diagonal"}
+    ):
+        variant = diagonal_shape(prices)
+    invalidation, projections = project(partial.pattern, partial.direction, prices, variant)
+    score, notes = score_waves(partial.pattern, prices, waves, variant)
     if partial.pattern == "impulse" and len(prices) == 6 and is_truncated(prices, partial.direction):
         notes = (*notes, "onda 5 truncada")
     return Count(
@@ -282,7 +290,7 @@ def _to_count(pivots: list[Pivot], partial: Partial, status: str) -> Count:
         invalidation=invalidation,
         projections=projections,
         guideline_notes=notes,
-        variant=partial.variant,
+        variant=variant,
         endpoint_indexes=tuple(pivots[point].index for point in points),
     )
 
@@ -346,17 +354,33 @@ def _partial_quality(partial: Partial, pivots: list[Pivot]) -> float:
 
 
 def _motive_path_ok(pivots: list[Pivot], partial: Partial, end: int, wave_no: int, allow_overlap: bool) -> bool:
-    """Wave 2 cannot trade through the origin, and wave 4 cannot trade through wave 1."""
+    """A correction cannot break the origin it must hold or the extreme it corrects."""
     start = partial.start if not partial.ends else partial.ends[-1]
     if wave_no == 2:
-        return _holds_origin(pivots, partial.start, start, end, partial.direction)
-    if wave_no == 4 and not allow_overlap:
-        bound = pivots[partial.ends[0]].price
-        span = [pivots[index].price for index in range(start, end + 1)]
-        if partial.direction == "bullish":
-            return min(span) > bound
-        return max(span) < bound
-    return True
+        return _holds_origin(pivots, partial.start, start, end, partial.direction) and _behind_previous_extreme(
+            pivots, start, end, partial.direction
+        )
+    if wave_no != 4:
+        return True
+    if not _behind_previous_extreme(pivots, start, end, partial.direction):
+        return False
+    if allow_overlap:
+        # Wave 3 begins where wave 2 ended. Wave 4 may overlap wave 1, not that origin.
+        return _holds_origin(pivots, partial.ends[1], start, end, partial.direction)
+    bound = pivots[partial.ends[0]].price
+    span = [pivots[index].price for index in range(start, end + 1)]
+    if partial.direction == "bullish":
+        return min(span) > bound
+    return max(span) < bound
+
+
+def _behind_previous_extreme(pivots: list[Pivot], start: int, end: int, direction: Direction) -> bool:
+    """The correction's pivots stay at or behind the extreme of the wave it corrects."""
+    span = [pivots[index].price for index in range(start, end + 1)]
+    bound = pivots[start].price
+    if direction == "bullish":
+        return max(span) <= bound
+    return min(span) >= bound
 
 
 def _holds_origin(pivots: list[Pivot], origin: int, start: int, end: int, direction: Direction) -> bool:

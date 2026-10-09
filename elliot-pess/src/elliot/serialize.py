@@ -15,6 +15,7 @@ _PATTERN_LABELS = {
 }
 _DIRECTION_LABELS = {"bullish": "Alcista", "bearish": "Bajista"}
 _STATUS_LABELS = {"complete": "Cerrado", "in_progress": "En curso"}
+_DIAGONAL_SHAPES = {"contracting": "contractiva", "expanding": "expansiva"}
 
 
 def analysis_to_dict(analysis: Analysis) -> dict:
@@ -67,6 +68,9 @@ def chart_payload(bars: list[Bar], analysis: Analysis) -> dict:
 
 def _chart_count(count: Count, title: str) -> dict:
     pattern = _PATTERN_LABELS.get(count.pattern, count.pattern)
+    shape = _DIAGONAL_SHAPES.get(count.variant or "")
+    if shape:
+        pattern = f"{pattern} {shape}"
     return {
         "id": title.lower().replace(" ", "-"),
         "title": title,
@@ -85,6 +89,7 @@ def _chart_count(count: Count, title: str) -> dict:
         "projections": _projection_rows(count),
         "polyline": _polyline(count),
         "subwaves": _subwaves(count),
+        "channel": _channel(count),
     }
 
 
@@ -149,6 +154,17 @@ def _pick_preferred(projections, indexes: list[int], target: str) -> int:
     if target in {"waveC", "waveY"}:
         return first(lambda item: abs(item.ratio - 1.0) < 1e-9) or indexes[0]
     return indexes[0]
+
+
+def _channel(count: Count) -> list[list[dict]]:
+    if count.pattern not in {"impulse", "leading_diagonal", "ending_diagonal"}:
+        return []
+    from elliot.guidelines.channel import wave5_channel
+
+    lines = wave5_channel(count.waves)
+    if lines is None:
+        return []
+    return [list(line) for line in lines]
 
 
 def _polyline(count: Count) -> list[dict]:

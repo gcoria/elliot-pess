@@ -58,6 +58,51 @@ def test_engine_rejects_shortest_wave3_as_a_complete_impulse():
     )
 
 
+def test_correction_cannot_make_a_new_extreme():
+    """Wave 2 ends above wave 1, but its path makes a lower low, so the diagonal is dropped."""
+    prices = [100, 90, 70, 95, 80, 92, 85]
+    analysis = analyze(bars_from_prices(prices), deviation=0.02)
+    assert not any(
+        count.pattern in {"leading_diagonal", "ending_diagonal", "impulse"}
+        and count.direction == "bearish"
+        and count.waves
+        and abs(count.waves[0].price_end - 90) < 0.01
+        and abs(count.waves[1].price_end - 95) < 0.01
+        for count in analysis.considered
+    )
+
+
+def test_deo_broken_wave2_is_not_primary():
+    from pathlib import Path
+
+    path = Path("data/DEO_2026-01-01_2026-09-29.csv")
+    if not path.exists():
+        return
+    from elliot.io.csv_loader import load_ohlc
+
+    analysis = analyze(load_ohlc(path), deviation=0.05)
+    assert analysis.primary is not None
+    ends = [round(price, 2) for price in analysis.primary.end_prices]
+    assert ends != [89.91, 85.14, 87.48, 77.79, 85.89, 84.52]
+    assert not any(
+        [round(price, 2) for price in count.end_prices] == [89.91, 85.14, 87.48, 77.79, 85.89, 84.52]
+        for count in analysis.considered
+    )
+
+
+def test_closed_diagonal_is_labeled_contracting_or_expanding():
+    contracting = analyze(bars_from_prices([100, 130, 118, 136, 128, 138]), deviation=0.02)
+    expanding = analyze(bars_from_prices([100, 108, 102, 116, 106, 128]), deviation=0.02)
+    assert any(
+        count.pattern == "leading_diagonal" and count.variant == "contracting" and count.status == "complete"
+        for count in contracting.considered
+    )
+    assert any(
+        count.pattern == "leading_diagonal" and count.variant == "expanding" and count.status == "complete"
+        for count in expanding.considered
+    )
+
+
 def test_overlap_is_a_diagonal_not_an_impulse():
     analysis = analyze(bars_from_prices([100, 120, 110, 130, 115, 135]), deviation=0.02)
     assert not any(count.pattern == "impulse" and count.status == "complete" for count in analysis.considered)

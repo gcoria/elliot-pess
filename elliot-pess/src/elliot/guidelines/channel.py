@@ -1,4 +1,4 @@
-"""Parallel channel through the ends of waves 1 and 3, projected from wave 2."""
+"""Channels: the scored 1-3 base, and the 2-4 base drawn ahead of wave 5."""
 
 from __future__ import annotations
 
@@ -27,3 +27,30 @@ def channel_score(waves: tuple[Wave, ...]) -> tuple[float, tuple[str, ...]]:
     if quality < 0.4:
         return quality * 10, ()
     return quality * 10, ("la onda 4 respeta el canal 1-3 / 2",)
+
+
+def wave5_channel(waves: tuple[Wave, ...]) -> tuple[tuple[dict, ...], tuple[dict, ...]] | None:
+    """Line through the ends of waves 2 and 4, and its parallel through the end of wave 3.
+
+    Both lines run from the end of wave 2 and continue past wave 4 by that same span.
+    """
+    by_label = {wave.label: wave for wave in waves}
+    if any(label not in by_label for label in ("2", "3", "4")):
+        return None
+    wave2 = by_label["2"]
+    wave3 = by_label["3"]
+    wave4 = by_label["4"]
+    span = wave4.time_end - wave2.time_end
+    if span == 0:
+        return None
+    slope = (wave4.price_end - wave2.price_end) / span
+    end = wave4.time_end + span
+    base = (
+        {"time": wave2.time_end, "price": wave2.price_end},
+        {"time": end, "price": wave4.price_end + slope * span},
+    )
+    parallel = (
+        {"time": wave2.time_end, "price": wave3.price_end + slope * (wave2.time_end - wave3.time_end)},
+        {"time": end, "price": wave3.price_end + slope * (end - wave3.time_end)},
+    )
+    return base, parallel

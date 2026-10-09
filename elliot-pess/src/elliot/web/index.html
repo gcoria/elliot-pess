@@ -112,6 +112,7 @@
       crosshairMarkerVisible: false,
     });
     const subLines = [];
+    const channelLines = [];
     let priceLines = [];
     let payload = { candles: [], counts: [] };
 
@@ -143,6 +144,25 @@
       while (subLines.length) chart.removeSeries(subLines.pop());
     }
 
+    function clearChannelLines() {
+      while (channelLines.length) chart.removeSeries(channelLines.pop());
+    }
+
+    function drawChannel(count) {
+      for (const path of count.channel || []) {
+        const series = chart.addLineSeries({
+          color: "#c4b5fd",
+          lineWidth: 1,
+          lineStyle: LightweightCharts.LineStyle.Dashed,
+          priceLineVisible: false,
+          lastValueVisible: false,
+          crosshairMarkerVisible: false,
+        });
+        series.setData(path.map((point) => ({ time: point.time, value: point.price })));
+        channelLines.push(series);
+      }
+    }
+
     function outlookFor(count) {
       const counts = (payload.forecast && payload.forecast.counts) || [];
       return counts.find((item) => item.title === count.title) || null;
@@ -156,6 +176,7 @@
     function draw(count, showSubs, showOutlook) {
       clearPriceLines();
       clearSubLines();
+      clearChannelLines();
       if (!count) {
         waveLine.setData([]);
         candles.setMarkers([]);
@@ -200,6 +221,7 @@
         unique.push(marker);
       }
       candles.setMarkers(unique);
+      drawChannel(count);
       priceLines.push(candles.createPriceLine({
         price: count.invalidation,
         color: "#ff5c7a",
